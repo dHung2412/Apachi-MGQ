@@ -1,0 +1,78 @@
+{
+  "event_type": "dataset_create",
+  "timestamp": "2026-04-29T10:00:00Z",
+  "source": "airflow",
+  "dag_id": "etl_daily_sales",
+  "run_id": "manual__2026-04-29",
+  "task_id": "create_table",
+  "payload": {
+    "dataset": {
+      "name": "daily_sales_agg",
+      "urn": "postgres:warehouse.daily_sales_agg",
+      "platform": "postgres",
+      "database": "warehouse",
+      "schema": "public",
+      "table_type": "table",
+      "description": "Aggregated daily sales data",
+      "owner": {
+        "username": "data_team",
+        "email": "data-team@company.com",
+        "full_name": "Data Engineering Team"
+      },
+      "columns": [
+        {
+          "name": "date",
+          "data_type": "date",
+          "description": "Transaction date",
+          "is_nullable": false,
+          "is_primary": true,
+          "position": 1
+        },
+        {
+          "name": "total_revenue",
+          "data_type": "decimal(18,2)",
+          "description": "Total revenue for the day",
+          "is_nullable": false,
+          "position": 2
+        },
+        {
+          "name": "order_count",
+          "data_type": "integer",
+          "description": "Number of orders",
+          "is_nullable": false,
+          "position": 3
+        },
+        {
+          "name": "updated_at",
+          "data_type": "timestamp",
+          "description": "Last update timestamp",
+          "is_nullable": true,
+          "position": 4
+        }
+      ]
+    },
+    "lineage": {
+      "source_dataset": "postgres:warehouse.raw_orders",
+      "target_dataset": "postgres:warehouse.daily_sales_agg",
+      "transform_type": "aggregation",
+      "job_id": "dag_etl_daily_sales_task_transform",
+      "mappings": [
+        {
+          "source_column": "order_date",
+          "target_column": "date",
+          "transform": "date_trunc('day', order_date)"
+        },
+        {
+          "source_column": "amount",
+          "target_column": "total_revenue",
+          "transform": "sum(amount)"
+        },
+        {
+          "source_column": "order_id",
+          "target_column": "order_count",
+          "transform": "count(distinct order_id)"
+        }
+      ]
+    }
+  }
+}
