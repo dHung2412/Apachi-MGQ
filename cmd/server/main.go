@@ -11,12 +11,18 @@ import (
 
 	"DP_Maintenance/internal/api"
 	"DP_Maintenance/internal/api/handlers"
+	"DP_Maintenance/internal/model"
+	"DP_Maintenance/internal/repository"
+	"DP_Maintenance/internal/repository/memgraph"
 	"DP_Maintenance/internal/service"
 	"DP_Maintenance/pkg/config"
+	"DP_Maintenance/pkg/database"
+
+	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
+	"gorm.io/gorm"
 )
 
 func main() {
-	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
@@ -24,25 +30,72 @@ func main() {
 
 	log.Printf("Environment: %s, LogLevel: %s", cfg.Environment, cfg.LogLevel)
 
-	// --- Services (Phase 1: nil repos for stub mode) ---
+	var db *gorm.DB
+	if cfg.DatabaseURL != "" || cfg.DatabaseHost != "" {
+		db, err = database.ConnectPostgres(cfg)
+		if err != nil {
+			log.Fatalf("Failed to connect to PostgreSQL: %v", err)
+		}
+		log.Println("Connected to PostgreSQL")
+	}
+
+	var mgDriver neo4j.DriverWithContext
+	if cfg.MemgraphURI != "" {
+		mgDriver, err = database.ConnectMemgraph(cfg)
+		if err != nil {
+			log.Fatalf("Failed to connect to Memgraph: %v", err)
+		}
+		log.Println("Connected to Memgraph")
+
+		if err := database.SetupMemgraphConstraints(mgDriver); err != nil {
+			log.Printf("Warning: Failed to setup Memgraph constraints: %v", err)
+		}
+	}
+
+	var datasetRepo repository.DatasetRepository
+	var userRepo repository.UserRepository
+	var schemaRepo repository.SchemaVersionRepository
+	var tagRepo repository.TagRepository
+	var lineageRepo repository.LineageRepository
+
+	if db != nil {
+		if err := db.AutoMigrate(
+			&model.User{},
+			&model.Dataset{},
+			&model.SchemaVersion{},
+			&model.Tag{},
+			&model.Job{},
+		); err != nil {
+			log.Fatalf("Failed to run migrations: %v", err)
+		}
+		log.Println("Database migrations completed")
+
+		datasetRepo = repository.NewDBDatasetRepository(db)
+		userRepo = repository.NewDBUserRepository(db)
+		schemaRepo = repository.NewDBSchemaVersionRepository(db)
+		tagRepo = repository.NewDBTagRepository(db)
+	}
+
+	if mgDriver != nil {
+		mgConn := memgraph.NewConnectionFromDriver(mgDriver)
+		lineageRepo = memgraph.NewLineageRepository(mgConn)
+	}
+
 	authSvc := service.NewAuthService(cfg.JWTSecret)
-	catalogSvc := service.NewCatalogService(nil, nil, nil, nil, nil)
-	lineageSvc := service.NewLineageService(nil)
+	catalogSvc := service.NewCatalogService(datasetRepo, schemaRepo, userRepo, tagRepo)
+	lineageSvc := service.NewLineageService(lineageRepo)
 	ingestionSvc := service.NewIngestionService(catalogSvc, lineageSvc, cfg.WorkerCount, cfg.ChannelBuffer)
 
-	// Start async worker pool
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	ingestionSvc.Start(ctx)
 
-	// --- Handlers ---
-	authHandler := handlers.NewAuthHandler(authSvc)
+	authHandler := handlers.NewAuthHandler(authSvc, userRepo)
 	ingestHandler := handlers.NewIngestHandler()
-	datasetHandler := handlers.NewDatasetHandler()
+	datasetHandler := handlers.NewDatasetHandler(catalogSvc)
 	lineageHandler := handlers.NewLineageHandler(lineageSvc)
 	healthHandler := handlers.NewHealthHandler()
 
-	// --- Router ---
 	router := api.NewRouter(
 		authHandler,
 		ingestHandler,
@@ -53,7 +106,6 @@ func main() {
 	)
 	e := router.Setup()
 
-	// --- Graceful shutdown ---
 	go func() {
 		addr := fmt.Sprintf(":%s", cfg.ServerPort)
 		log.Printf("Starting server on %s", addr)
@@ -62,23 +114,24 @@ func main() {
 		}
 	}()
 
-	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
 	log.Println("Received shutdown signal")
 
-	// Shutdown Echo server with timeout
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 	if err := e.Shutdown(shutdownCtx); err != nil {
 		log.Fatalf("Server forced shutdown: %v", err)
 	}
 
-	// Shutdown worker pool
 	cancel()
 	ingestionSvc.Shutdown()
+
+	if mgDriver != nil {
+		mgDriver.Close(shutdownCtx)
+	}
 
 	log.Println("Server exited gracefully")
 }

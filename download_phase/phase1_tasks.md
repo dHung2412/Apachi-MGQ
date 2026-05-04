@@ -46,6 +46,46 @@ go-data-catalog/
 | `event.go` | IngestEvent (API request payload) |
 | `response.go` | API response wrappers |
 
+#### Lineage Models (`internal/model/lineage.go`)
+
+```go
+package model
+
+import "time"
+
+type LineageEdge struct {
+    ID          string    `json:"id" db:"id"`
+    SourceType string    `json:"source_type" db:"source_type"` // table, column, job
+    SourceID    string    `json:"source_id" db:"source_id"`
+    TargetType  string    `json:"target_type" db:"target_type"`
+    TargetID    string    `json:"target_id" db:"target_id"`
+    Transform   string    `json:"transform" db:"transform"` // e.g., "copy", "sum(col)", "concat(a,b)"
+    CreatedAt   time.Time `json:"created_at" db:"created_at"`
+    UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
+}
+
+type ColumnMapping struct {
+    ID             string    `json:"id" db:"id"`
+    SourceDataset  string    `json:"source_dataset" db:"source_dataset"`
+    SourceColumn   string    `json:"source_column" db:"source_column"`
+    TargetDataset  string    `json:"target_dataset" db:"target_dataset"`
+    TargetColumn   string    `json:"target_column" db:"target_column"`
+    TransformRule  string    `json:"transform_rule" db:"transform_rule"`
+    CreatedAt      time.Time `json:"created_at" db:"created_at"`
+}
+
+type LineageGraph struct {
+    Nodes []LineageNode `json:"nodes"`
+    Edges []LineageEdge `json:"edges"`
+}
+
+type LineageNode struct {
+    ID   string `json:"id"`
+    Type string `json:"type"` // table, column, job, dashboard
+    Name string `json:"name"`
+}
+```
+
 ### Task 4: Auth Service (JWT)
 **Output:** `internal/service/auth.go`
 

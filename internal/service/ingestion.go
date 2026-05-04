@@ -5,6 +5,8 @@ import (
 	"log"
 	"sync"
 
+	"github.com/google/uuid"
+
 	"DP_Maintenance/internal/model"
 )
 
@@ -125,7 +127,7 @@ func (s *IngestionService) processEvent(workerID int, event model.IngestEvent) {
 		// Record schema version
 		if len(ds.Columns) > 0 {
 			if err := s.catalogSvc.RecordSchemaVersion(
-				dataset.ID, ds.Columns, ds.Owner.Username,
+				dataset.ID, ds.Columns, uuid.Nil,
 			); err != nil {
 				log.Printf("[WORKER-%d] Error recording schema: %v", workerID, err)
 			}

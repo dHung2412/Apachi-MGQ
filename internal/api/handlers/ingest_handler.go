@@ -66,3 +66,10 @@ func (h *IngestHandler) Ingest(c echo.Context) error {
 		"event accepted",
 	))
 }
+
+func (h *IngestHandler) ListEvents(c echo.Context) error {
+	return c.JSON(http.StatusOK, model.SuccessResponse(
+		h.eventLog,
+		"events listed successfully",
+	))
+}

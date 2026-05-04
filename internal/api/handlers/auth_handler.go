@@ -3,21 +3,23 @@ package handlers
 import (
 	"net/http"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
 	"DP_Maintenance/internal/model"
+	"DP_Maintenance/internal/repository"
 	"DP_Maintenance/internal/service"
 )
 
 type AuthHandler struct {
 	authService *service.AuthService
-	users       map[string]*model.User
+	userRepo    repository.UserRepository
 }
 
-func NewAuthHandler(authService *service.AuthService) *AuthHandler {
+func NewAuthHandler(authService *service.AuthService, userRepo repository.UserRepository) *AuthHandler {
 	return &AuthHandler{
 		authService: authService,
-		users:       make(map[string]*model.User),
+		userRepo:    userRepo,
 	}
 }
 
@@ -27,8 +29,11 @@ func (h *AuthHandler) Register(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, model.ErrorResponse("invalid request body"))
 	}
 
-	if _, exists := h.users[req.Username]; exists {
-		return c.JSON(http.StatusConflict, model.ErrorResponse("username already exists"))
+	if h.userRepo != nil {
+		existing, _ := h.userRepo.GetByUsername(req.Username)
+		if existing != nil {
+			return c.JSON(http.StatusConflict, model.ErrorResponse("username already exists"))
+		}
 	}
 
 	hashedPassword, err := h.authService.HashPassword(req.Password)
@@ -37,6 +42,7 @@ func (h *AuthHandler) Register(c echo.Context) error {
 	}
 
 	user := &model.User{
+		ID:           uuid.New(),
 		Username:     req.Username,
 		Email:        req.Email,
 		PasswordHash: hashedPassword,
@@ -44,7 +50,12 @@ func (h *AuthHandler) Register(c echo.Context) error {
 		Role:         "user",
 		IsActive:     true,
 	}
-	h.users[user.Username] = user
+
+	if h.userRepo != nil {
+		if err := h.userRepo.Create(user); err != nil {
+			return c.JSON(http.StatusInternalServerError, model.ErrorResponse("failed to create user"))
+		}
+	}
 
 	token, err := h.authService.GenerateToken(user)
 	if err != nil {
@@ -63,12 +74,17 @@ func (h *AuthHandler) Login(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, model.ErrorResponse("invalid request body"))
 	}
 
-	user, exists := h.users[req.Username]
-	if !exists {
-		return c.JSON(http.StatusUnauthorized, model.ErrorResponse("invalid credentials"))
+	var user *model.User
+	var err error
+
+	if h.userRepo != nil {
+		user, err = h.userRepo.GetByUsername(req.Username)
+		if err != nil {
+			return c.JSON(http.StatusUnauthorized, model.ErrorResponse("invalid credentials"))
+		}
 	}
 
-	if !h.authService.VerifyPassword(user.PasswordHash, req.Password) {
+	if user == nil || !h.authService.VerifyPassword(user.PasswordHash, req.Password) {
 		return c.JSON(http.StatusUnauthorized, model.ErrorResponse("invalid credentials"))
 	}
 

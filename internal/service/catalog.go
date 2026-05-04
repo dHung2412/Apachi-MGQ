@@ -1,35 +1,33 @@
 package service
 
 import (
+	"DP_Maintenance/internal/model"
+	"DP_Maintenance/internal/repository"
 	"fmt"
 	"log"
 
-	"DP_Maintenance/internal/model"
-	"DP_Maintenance/internal/repository"
+	"github.com/google/uuid"
 )
 
 // CatalogService handles metadata business logic: dataset CRUD,
 // schema versioning, ownership, and tag management.
 type CatalogService struct {
-	datasetRepo   repository.DatasetRepository
-	columnRepo    repository.ColumnRepository
-	schemaRepo    repository.SchemaVersionRepository
-	userRepo      repository.UserRepository
-	tagRepo       repository.TagRepository
+	datasetRepo repository.DatasetRepository
+	schemaRepo  repository.SchemaVersionRepository
+	userRepo    repository.UserRepository
+	tagRepo     repository.TagRepository
 }
 
 // NewCatalogService creates a CatalogService with injected repositories.
 // Pass nil for repos that aren't available yet (stub mode).
 func NewCatalogService(
 	datasetRepo repository.DatasetRepository,
-	columnRepo repository.ColumnRepository,
 	schemaRepo repository.SchemaVersionRepository,
 	userRepo repository.UserRepository,
 	tagRepo repository.TagRepository,
 ) *CatalogService {
 	return &CatalogService{
 		datasetRepo: datasetRepo,
-		columnRepo:  columnRepo,
 		schemaRepo:  schemaRepo,
 		userRepo:    userRepo,
 		tagRepo:     tagRepo,
@@ -87,9 +85,9 @@ func (s *CatalogService) DeleteDataset(urn string) error {
 // --- Ownership ---
 
 // UpdateOwner changes the owner of a dataset.
-func (s *CatalogService) UpdateOwner(urn string, ownerID uint) error {
+func (s *CatalogService) UpdateOwner(urn string, ownerID uuid.UUID) error {
 	if s.datasetRepo == nil {
-		log.Printf("[CATALOG] Stub: UpdateOwner(%s, %d)", urn, ownerID)
+		log.Printf("[CATALOG] Stub: UpdateOwner(%s, %s)", urn, ownerID)
 		return nil
 	}
 	return s.datasetRepo.UpdateOwner(urn, ownerID)
@@ -98,9 +96,9 @@ func (s *CatalogService) UpdateOwner(urn string, ownerID uint) error {
 // --- Schema Versioning ---
 
 // RecordSchemaVersion saves a new schema version and computes the diff.
-func (s *CatalogService) RecordSchemaVersion(datasetID uint, columns []model.ColumnDef, changedBy string) error {
+func (s *CatalogService) RecordSchemaVersion(datasetID uuid.UUID, columns []model.ColumnDef, changedBy uuid.UUID) error {
 	if s.schemaRepo == nil {
-		log.Printf("[CATALOG] Stub: RecordSchemaVersion(dataset=%d, columns=%d)", datasetID, len(columns))
+		log.Printf("[CATALOG] Stub: RecordSchemaVersion(dataset=%s, columns=%d)", datasetID, len(columns))
 		return nil
 	}
 
@@ -124,9 +122,9 @@ func (s *CatalogService) RecordSchemaVersion(datasetID uint, columns []model.Col
 // --- Tags ---
 
 // AssignTag assigns a tag to a dataset.
-func (s *CatalogService) AssignTag(datasetID uint, key, value string) error {
+func (s *CatalogService) AssignTag(datasetID uuid.UUID, key, value string) error {
 	if s.tagRepo == nil {
-		log.Printf("[CATALOG] Stub: AssignTag(dataset=%d, %s=%s)", datasetID, key, value)
+		log.Printf("[CATALOG] Stub: AssignTag(dataset=%s, %s=%s)", datasetID, key, value)
 		return nil
 	}
 
